@@ -1,0 +1,138 @@
+Пример лёгкого рефактора, по которому есть много вопросов, что имелось ввиду...
+Сейчас логика не тронута, только изменён вывод ошибок и сообщения по завершению работы
+
+
+import java.io.File;
+
+
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+
+/**
+ * Интерфейс
+ * */
+interface DataConnection {//вынести бы его в другой файл
+
+    int loadDatas(int sum) throws Exception;
+
+    void saveData(int year, int qq) throws IOException;
+}
+
+/**
+ * Главный класс
+ * */
+public class MyApp implements DataConnection {
+
+
+    public static class MyAppFactory {
+
+        public static MyApp create(String year) {
+            return new MyApp(year);
+        }
+    }
+
+    MyApp(String year) {
+        this.year = year;
+    }
+
+
+    private String year; //текущий год, который обрабатываем
+    //зачем им быть static не понятно
+    private static int COUNT_OF_ROWS_BY_YEAR = 0;
+    private static int COUNT1 = 0;
+    //года так и просятся стать final, но вдруг нет... вдруг их какой-нибудь потомок MyApp по другому инициализирует
+    protected static int startYear = 1990;
+    protected static int endYear = 2020;
+
+    /**
+     * Главный метод
+     *
+     * @param args
+     */
+    public static void main(String[] args) {
+        try {
+            System.out.println("app v.1.13");
+
+            for (int currentYear = startYear; currentYear < endYear; currentYear++) {
+
+                int sumOfSomethingByYear = 0; //не приходит в голову, "чего же" это сумма за год
+                COUNT_OF_ROWS_BY_YEAR = 0; //Счётчик записей в файле 1.txt по годам
+                COUNT1 = 0;//Пока бессмысленный счётчик, который всегда 0, но перед самым концом работы экземляра класса MyApp устанавливается в 1,
+                // но никуда вывестись или сохраниться не успевает и умирает с хозяином. Чувствуется, что это должен быть счётчик порядковых номеров, но я не уверен
+                String year = currentYear + "";
+
+                MyApp myApp = MyAppFactory.create(year);//если так нужно каждый раз создавать MyApp, то хотя бы 1 раз за итерацию
+                sumOfSomethingByYear = myApp.loadDatas(sumOfSomethingByYear);
+                double someCoefficient = (sumOfSomethingByYear > 0) && (COUNT_OF_ROWS_BY_YEAR != 0) ? (double) sumOfSomethingByYear / (double) COUNT_OF_ROWS_BY_YEAR : 0;
+                if (someCoefficient > 0) {
+                    System.out.println(currentYear + " " + someCoefficient);
+                }
+                myApp.saveData(currentYear, (int) someCoefficient);//своеобразный способ избавиться от дробной части
+            }
+            System.out.println("Getting statistic is well done");
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    /**
+     * Загрузка данных из файла (?логов?ошибок?расчётов)
+     *
+     * @param sum - бессмысленный параметр, потому что перед вызовом метода всегда инициализируется в 0,
+     *            смена инициализации зависит от смысла парамерта, а он туманен
+     * @return сумма, но здесь он хоть собирает сумму по тому году(year), для которого создан оъект MyApp
+     */
+    @Override //хоть сейчас эта аннотация в java необязательна, но чтобы программист видел
+    public int loadDatas(int sum) throws Exception {
+        //готовим поток ввода
+        File file = new File("1.txt"); //хорошо было бы сменить имя файла, но при текущем понимани логики выходит только log.txt или random.log
+        FileInputStream fis = new FileInputStream(file);
+
+        //читаем содержимое файла
+        StringBuilder bufferString = new StringBuilder("");
+        int i = fis.read();
+        while (i != -1) {
+            bufferString = bufferString.append((char)i);
+            i = fis.read();
+        }
+
+        //разбираем содержимое на строки(line) и обрабатываем
+        int indexStartOfLine = 0;
+        int indexEndOfLine = bufferString.indexOf("\n", indexStartOfLine);
+        while (indexEndOfLine != -1) {
+
+                String oneLineString = bufferString.substring(indexStartOfLine, indexEndOfLine);
+                //System.out.println(oneLineString);    //по идее надо удалить
+                String[] words = oneLineString.split("\\s"); //здесь же регулярное выражение должно быть!!!
+                //переименовал массив строк в слова, потому что по сути это и есть слова, хотя мы то знаем, что там на самом деле на некоторых местах должны быть числа
+                for (String word : words) { //если надо цикл, почему бы ему не быть, если понадобится вывод отдельных слов, тогда пригодится, если уже закончена работа, то удалить
+                    //System.out.println(word);
+                }
+                if (words.length > 3) { //Защита от ArrayOutOfBoundException (всё равно в теле условия только 4ый(по индексу 3) элемент массива нужен)
+                    if (words[2].contains(this.year) || words[2].contains(year)) { //сравнение с одним и тем же, неясно, то ли инициализация MyApp должна быть другой, то ли здесь одну из проверок убрать
+                        sum = sum + Integer.parseInt(words[3]);//здесь может прилететь исключение, которое прокинется во внешний объект
+                    }
+                }
+                COUNT_OF_ROWS_BY_YEAR++;
+                indexStartOfLine = indexEndOfLine + 1; //Чтобы не вставлял /n, в выбираемую подстроку
+                indexEndOfLine = bufferString.indexOf("\n", indexStartOfLine);
+
+        }
+        return sum;
+    }
+
+    /**
+     * Запись статистики в файл
+     *
+     * @param year - год, по которому посчитано
+     * @param someCoefficient   - какой-то расчётный показатель
+     */
+    @Override
+    public void saveData(int year, int someCoefficient) throws IOException {
+        FileOutputStream fis = new FileOutputStream(new File("statistika.txt"), true);
+        String s = COUNT1 + "	" + year + "	" + someCoefficient + "\n";//какого формата необходим вывод - неизвестно, так что менять нет смысла
+        fis.write(s.getBytes());
+        COUNT1++;
+    }
+}
